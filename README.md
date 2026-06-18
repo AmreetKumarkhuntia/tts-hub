@@ -31,17 +31,26 @@ First run downloads the Kokoro weights (~330 MB) from Hugging Face.
 ## Run
 
 ```bash
-uv run uvicorn app.main:app --reload      # or: ./scripts/dev.sh
+uv run tts-hub
 ```
 
-Server starts on `http://localhost:8000`. On Apple Silicon, set `KOKORO_DEVICE=mps`
-in `.env` for GPU acceleration; on a CPU-only VM leave it `cpu`.
+This reads `HOST`, `PORT`, `RELOAD`, and `KOKORO_DEVICE` from `.env` (defaults to
+`http://0.0.0.0:8000` with auto-reload). To override the port ad hoc, or to use the
+raw uvicorn CLI instead:
+
+```bash
+uv run uvicorn app.main:app --reload --port 8000
+```
+
+On Apple Silicon, set `KOKORO_DEVICE=mps` in `.env` for GPU acceleration; on a CPU-only
+VM leave it `cpu`.
 
 ## Test it
 
-Open **`test.html`** — double-click it (`file://`) or visit
-`http://localhost:8000/test.html`. Pick a model, voice, and language, type text, and
-hit Generate. CORS is open so the `file://` route works too.
+With the server running, open **`http://localhost:<PORT>/test.html`** (the page
+auto-detects the port when served this way). Pick a model, voice, and language, type
+text, and hit Generate. You can also double-click `test.html` (`file://`) and set the
+API base field manually — CORS is open so that works too.
 
 ## API
 
