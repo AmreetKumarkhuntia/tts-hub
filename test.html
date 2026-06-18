@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>tts-hub tester</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font: 15px/1.5 system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.3rem; }
+    label { display: block; margin: 0.75rem 0 0.25rem; font-weight: 600; }
+    input, select, textarea, button { font: inherit; padding: 0.5rem; width: 100%; box-sizing: border-box; }
+    .row { display: flex; gap: 1rem; }
+    .row > div { flex: 1; }
+    textarea { min-height: 6rem; resize: vertical; }
+    button { margin-top: 1rem; cursor: pointer; font-weight: 600; }
+    #status { margin-top: 1rem; min-height: 1.4rem; color: #b00; }
+    audio { width: 100%; margin-top: 1rem; }
+    a.dl { display: inline-block; margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>tts-hub tester</h1>
+
+  <label for="api">API base</label>
+  <input id="api" placeholder="http://localhost:8000" />
+
+  <div class="row">
+    <div>
+      <label for="model">Model</label>
+      <select id="model"></select>
+    </div>
+    <div>
+      <label for="voice">Voice</label>
+      <select id="voice"></select>
+    </div>
+    <div>
+      <label for="lang">Language</label>
+      <select id="lang"><option value="">(from voice)</option></select>
+    </div>
+  </div>
+
+  <label for="text">Text</label>
+  <textarea id="text">Hello! This is a test of the text to speech server.</textarea>
+
+  <label for="speed">Speed: <span id="speedVal">1.0</span></label>
+  <input id="speed" type="range" min="0.5" max="2" step="0.1" value="1.0" />
+
+  <button id="go">Generate</button>
+
+  <div id="status"></div>
+  <audio id="player" controls></audio>
+  <div><a id="dl" class="dl" hidden download="speech.wav">Download WAV</a></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    // When the page is served by the API itself, default to its origin (correct port).
+    // When opened via file://, fall back to localhost:8000 (edit the field if your port differs).
+    const defaultApiBase = () =>
+      location.protocol.startsWith("http") ? location.origin : "http://localhost:8000";
+    const apiBase = () => ($("api").value.trim() || defaultApiBase()).replace(/\/+$/, "");
+    const setStatus = (msg, err = true) => { const s = $("status"); s.textContent = msg; s.style.color = err ? "#b00" : "#070"; };
+
+    $("api").value = defaultApiBase();
+    $("api").addEventListener("change", loadModels);
+    $("speed").addEventListener("input", () => ($("speedVal").textContent = $("speed").value));
+
+    async function loadModels() {
+      try {
+        const res = await fetch(apiBase() + "/models");
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const models = await res.json();
+        $("model").innerHTML = "";
+        models.forEach((m) => {
+          const o = document.createElement("option");
+          o.value = m.name;
+          o.textContent = `${m.name} (${m.voice_count} voices)`;
+          $("model").appendChild(o);
+        });
+        if (models.length) await loadVoices();
+        setStatus("Ready.", false);
+      } catch (e) {
+        setStatus("Could not reach API at " + apiBase() + " — is the server running? (" + e.message + ")");
+      }
+    }
+
+    async function loadVoices() {
+      const model = $("model").value;
+      const res = await fetch(apiBase() + "/voices?model=" + encodeURIComponent(model));
+      if (!res.ok) { setStatus("Failed to load voices: HTTP " + res.status); return; }
+      const voices = await res.json();
+      $("voice").innerHTML = "";
+      const langs = new Set();
+      voices.forEach((v) => {
+        const o = document.createElement("option");
+        o.value = v.id;
+        o.textContent = `${v.id} — ${v.language}${v.gender ? " / " + v.gender : ""}`;
+        $("voice").appendChild(o);
+        langs.add(v.language);
+      });
+      $("lang").innerHTML = '<option value="">(from voice)</option>';
+      [...langs].sort().forEach((l) => {
+        const o = document.createElement("option");
+        o.value = l; o.textContent = l;
+        $("lang").appendChild(o);
+      });
+    }
+
+    $("model").addEventListener("change", loadVoices);
+
+    // Build the streaming GET URL the <audio> element plays directly, so the
+    // browser starts playback as soon as the first PCM frames arrive.
+    function ttsUrl() {
+      const params = new URLSearchParams({ text: $("text").value, speed: $("speed").value });
+      if ($("model").value) params.set("model", $("model").value);
+      if ($("voice").value) params.set("voice", $("voice").value);
+      if ($("lang").value) params.set("language", $("lang").value);
+      return apiBase() + "/tts?" + params.toString();
+    }
+
+    let genStart = 0;
+    const player = $("player");
+    player.addEventListener("playing", () => {
+      if (genStart) {
+        setStatus(`Time to first audio: ${Math.round(performance.now() - genStart)} ms (streaming).`, false);
+        genStart = 0;
+      }
+    });
+    player.addEventListener("error", () => {
+      setStatus("Playback failed — check the server is running and the voice/language are valid.");
+    });
+
+    $("go").addEventListener("click", () => {
+      setStatus("Generating… (streaming)", false);
+      genStart = performance.now();
+      const url = ttsUrl();
+      player.src = url;
+      player.play().catch(() => {});
+      const dl = $("dl");
+      dl.href = url;
+      dl.hidden = false;
+    });
+
+    loadModels();
+  </script>
+</body>
+</html>

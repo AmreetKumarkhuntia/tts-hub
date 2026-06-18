@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+
+# Virtual envs
+.venv/
+venv/
+.env
+
+# uv
+uv.lock
+
+# Generated audio
+*.wav
+!tests/**/*.wav
+
+# Model cache
+.cache/
+models/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
