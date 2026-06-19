@@ -6,7 +6,10 @@
 #
 #   setup            Full end-to-end setup (delegates to ./setup.sh; forwards flags)
 #   dev              Start the server with auto-reload
-#   start            Start the server without auto-reload
+#   start            Start the server without auto-reload (foreground)
+#   start-bg         Start in the background (nohup), logs -> server.log
+#   stop             Stop the background server started by start-bg
+#   logs             Tail the background server log (server.log)
 #   serve            Start via raw uvicorn (uvicorn app.main:app --reload)
 #   download-model   Pre-download the Kokoro-82M weights (~330 MB)
 #   test             Run the test suite (forwards extra args to pytest)
@@ -19,7 +22,32 @@ set -euo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
-  sed -n '3,14p' "$0" | sed 's/^# \{0,1\}//; s/^#//'
+  sed -n '3,17p' "$0" | sed 's/^# \{0,1\}//; s/^#//'
+}
+
+# Background-process bookkeeping (paths are relative to the repo root we cd'd to).
+LOG_FILE="server.log"
+PID_FILE="server.pid"
+
+start_bg() {
+  if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+    echo "Already running (PID $(cat "$PID_FILE")). Stop it with: ./run.sh stop" >&2
+    exit 1
+  fi
+  echo "Starting tts-hub in the background (logs -> $LOG_FILE) ..."
+  nohup env RELOAD=false uv run tts-hub >"$LOG_FILE" 2>&1 &
+  echo $! >"$PID_FILE"
+  echo "Started (PID $(cat "$PID_FILE")). Tail logs: ./run.sh logs"
+}
+
+stop_bg() {
+  if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+    kill "$(cat "$PID_FILE")" && echo "Stopped (PID $(cat "$PID_FILE"))."
+    rm -f "$PID_FILE"
+  else
+    echo "Not running (no live process in $PID_FILE)." >&2
+    rm -f "$PID_FILE"
+  fi
 }
 
 download_model() {
@@ -42,6 +70,9 @@ case "$cmd" in
   setup)          exec ./setup.sh "$@" ;;
   dev)            exec env RELOAD=true  uv run tts-hub ;;
   start)          exec env RELOAD=false uv run tts-hub ;;
+  start-bg)       start_bg ;;
+  stop)           stop_bg ;;
+  logs)           exec tail -f "$LOG_FILE" ;;
   serve)          exec uv run uvicorn app.main:app --reload "$@" ;;
   download-model) download_model ;;
   test)           exec uv run pytest "$@" ;;

@@ -23,6 +23,10 @@ uv.lock
 .cache/
 models/
 
+# Background server runtime files (./run.sh start-bg)
+server.log
+server.pid
+
 # OS / editor
 .DS_Store
 .idea/

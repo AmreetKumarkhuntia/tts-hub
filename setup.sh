@@ -102,6 +102,31 @@ update_env() {
 }
 
 # ----------------------------------------------------------------------------- #
+# Ask the installed torch whether a device actually works (cuda/mps), so we can
+# fall back to cpu instead of writing a device that explodes at runtime.
+# Echoes "yes" if usable, "no" otherwise. Always "yes" for cpu.
+# ----------------------------------------------------------------------------- #
+device_available() {
+  local dev="$1"
+  [ "$dev" = "cpu" ] && { echo "yes"; return; }
+  uv run python - "$dev" <<'PY' 2>/dev/null || echo "no"
+import sys
+dev = sys.argv[1]
+try:
+    import torch
+    if dev == "cuda":
+        ok = torch.cuda.is_available()
+    elif dev == "mps":
+        ok = torch.backends.mps.is_available()
+    else:
+        ok = True
+except Exception:
+    ok = False
+print("yes" if ok else "no")
+PY
+}
+
+# ----------------------------------------------------------------------------- #
 # Detect platform.
 # ----------------------------------------------------------------------------- #
 OS="$(uname -s)"
@@ -190,19 +215,29 @@ else
   ok "Created .env from .env.example"
 fi
 
+# Pick the device we want, then verify it's actually usable — falling back to
+# cpu if not. Priority: explicit --device > existing .env value > platform guess
+# (mps on Apple Silicon, cuda on Linux, else cpu).
+current_device="$(awk -F= '$1=="KOKORO_DEVICE"{print $2}' .env 2>/dev/null || true)"
 if [ -n "$DEVICE" ]; then
-  update_env "KOKORO_DEVICE" "$DEVICE"
-  ok "Set KOKORO_DEVICE=$DEVICE"
+  want="$DEVICE"
+elif [ -n "$current_device" ]; then
+  want="$current_device"
 elif [ "$OS" = "Darwin" ] && [ "$ARCH" = "arm64" ]; then
-  # Only auto-pick mps when we just created the file (don't override a user's choice).
-  current_device="$(awk -F= '$1=="KOKORO_DEVICE"{print $2}' .env 2>/dev/null || true)"
-  if [ "$current_device" = "cpu" ] || [ -z "$current_device" ]; then
-    update_env "KOKORO_DEVICE" "mps"
-    ok "Apple Silicon detected — set KOKORO_DEVICE=mps (override with --device cpu)"
-  else
-    info "KOKORO_DEVICE=$current_device (left as-is)"
-  fi
+  want="mps"
+elif [ "$OS" = "Linux" ]; then
+  want="cuda"
+else
+  want="cpu"
 fi
+
+if [ "$want" != "cpu" ] && [ "$(device_available "$want")" != "yes" ]; then
+  warn "$want requested but not usable here (no device / torch can't see it) — falling back to cpu"
+  want="cpu"
+fi
+
+update_env "KOKORO_DEVICE" "$want"
+ok "Set KOKORO_DEVICE=$want"
 
 # ----------------------------------------------------------------------------- #
 # 5. Download model weights.
