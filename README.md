@@ -10,9 +10,45 @@ A model-evaluation + serving harness for picking a fast, self-hostable TTS for a
 voice-agent use case (English + Indic). Kokoro is the first engine; Piper, AI4Bharat,
 etc. can be added as new engines behind the same interface.
 
-## Install
+## Quick start
 
-Uses [`uv`](https://docs.astral.sh/uv/):
+One command takes a fresh checkout to "ready to run" — it installs `uv` and
+`espeak-ng` if missing, installs the Python deps, writes `.env`, and downloads the
+Kokoro weights:
+
+```bash
+./setup.sh        # or: ./run.sh setup
+./run.sh dev      # or: uv run tts-hub
+```
+
+Then open the tester at **`http://localhost:8000/test.html`**.
+
+`setup.sh` flags:
+
+| Flag | Effect |
+|---|---|
+| `--skip-model` | Don't pre-download weights (fetched lazily on first run) |
+| `--device <cpu\|mps\|cuda>` | Force `KOKORO_DEVICE` in `.env` (default: `mps` on Apple Silicon, else `cpu`) |
+| `--no-dev` | Runtime deps only (skip dev extras + smoke test) |
+| `--skip-tests` | Skip the final `pytest` smoke check |
+
+### Tasks (`./run.sh`)
+
+`run.sh` is a plain shell task runner — no extra tooling needed:
+
+| Command | Runs |
+|---|---|
+| `./run.sh setup` | full end-to-end setup (delegates to `setup.sh`) |
+| `./run.sh dev` | start with auto-reload (`RELOAD=true uv run tts-hub`) |
+| `./run.sh start` | start without auto-reload (`RELOAD=false uv run tts-hub`) |
+| `./run.sh serve` | raw uvicorn (`uv run uvicorn app.main:app --reload`) |
+| `./run.sh download-model` | pre-download the Kokoro weights |
+| `./run.sh test` | `uv run pytest` |
+| `./run.sh clean` | remove `.venv`, caches, and `__pycache__` |
+
+## Install (manual)
+
+Prefer `./setup.sh` above. To do it by hand with [`uv`](https://docs.astral.sh/uv/):
 
 ```bash
 cd ~/repository/tts-hub
@@ -26,7 +62,8 @@ brew install espeak-ng       # macOS
 # sudo apt-get install espeak-ng   # Debian/Ubuntu
 ```
 
-First run downloads the Kokoro weights (~330 MB) from Hugging Face.
+First run downloads the Kokoro weights (~330 MB) from Hugging Face. To fetch them
+ahead of time: `./run.sh download-model`.
 
 ## Run
 
@@ -147,5 +184,7 @@ app/
     base.py        TTSEngine ABC (the extension point)
     kokoro_engine.py
   api/routes.py  /health /models /voices /tts
+setup.sh         end-to-end setup (uv, espeak-ng, deps, .env, weights)
+run.sh           task runner (setup / dev / start / serve / test / clean)
 test.html        standalone tester
 ```
